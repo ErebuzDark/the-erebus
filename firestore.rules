@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && request.auth.token.admin == true;
+    }
+
+    match /products/{id} {
+      allow get: if resource.data.status == 'published' || isAdmin();
+      allow list: if isAdmin() || resource.data.status == 'published';
+      allow write: if isAdmin();
+    }
+
+    match /settings/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /orders/{id} {
+      allow create: if id.matches('^ORD-[A-HJ-NP-Z2-9]{8}$')
+        && request.resource.data.keys().hasOnly(['orderNumber','uid','customer','address','notes','items','subtotal','shipping','discount','total','paymentMethod','paymentStatus','status','trackingNumber','stockDeducted','statusHistory','createdAt'])
+        && request.resource.data.orderNumber == id
+        && request.resource.data.status == 'pending'
+        && request.resource.data.paymentStatus == 'unpaid'
+        && request.resource.data.paymentMethod == 'cod'
+        && request.resource.data.stockDeducted == false
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.items.size() > 0
+        && request.resource.data.items.size() <= 20
+        && (request.resource.data.uid == null
+            || (request.auth != null && request.resource.data.uid == request.auth.uid));
+      allow get: if true; // guests track by the unguessable order number
+      allow list: if isAdmin() || (request.auth != null && resource.data.uid == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    match /promoCodes/{id} { allow read, write: if isAdmin(); }
+  }
+}
